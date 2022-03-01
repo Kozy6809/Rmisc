@@ -14,6 +14,7 @@ lot2date <- function(lot) {
   subSpec <- if (is.na(subSpec)) 0 else subSpec
   
   y <- yearMap[yearStr] + origin
+  #print(y)
   y <- if (y < year(today())) {
     if (month(today()) == 12 && monthStr == "1") y + 20 else y
   } else y
@@ -25,13 +26,13 @@ rcResolv <- function(ser, name) {
   seriesMap <- c("HOC", "BOC", "EOC", "POP", "DUO", "HTC", "HPC", "OIL", "HVC", "YUI", "YUJ")
   names(seriesMap) <- c("h", "b", "e", "p", "d", "t", "s", "o", "v", "i", "j")
   nameStripe <- regmatches(name, gregexpr("[[:upper:]]{1}[[:lower:]]*|\\d*", name))[[1]]
-  print(nameStripe)
+  #print(nameStripe)
   genRegExp <- function(x) paste0(paste(strsplit(x, "")[[1]], collapse = ".*"), ".*")
 
   #品種名の変換("h" -> "HOC")をする場合
-  res <- rccode %>% filter(series == seriesMap[ser])
+  res <- rccode %>% filter(series == seriesMap[tolower(ser)])
   #しない場合
-  #res <- rccode %>% filter(series == ser)
+  #res <- rccode %>% filter(series == tolower(ser))
   res <- res[grep(paste0("^", genRegExp(nameStripe[1])), res$w1),]
   if (!is.na(nameStripe[2])) res <- res[grep(genRegExp(nameStripe[2]), res$w2),]
   else res <- subset(res, is.na(res$w2))
@@ -51,15 +52,15 @@ convColName <- function(s) {
   sep <- strsplit(s, " ")[[1]]
   code <- rcResolv(sep[1], sep[2])
   if (nrow(code) == 0) {
-    print("illegal name")
-    print(sep[1:2])
+    #print("illegal name")
+    #print(sep[1:2])
     NA
   } else if (nrow(code) > 1) {
-    print("name ambiguous")
-    print(code$sname)
+    #print("name ambiguous")
+    #print(code$sname)
     NA
   } else {
-    dayValue <- lot2date(sep[3])
+    dayValue <- if (!is.na(sep[3])) lot2date(sep[3]) else NA
     data.frame(pcode = code$pcode, lot = sep[3], day = dayValue, stringsAsFactors = FALSE)
   }
 }
@@ -69,7 +70,7 @@ convColObs <- function(df) {
   df <- df[, -1]
   names(df) <- c("name", "l", "a", "b")
   headings <- df[(0:(nrow(df) / 6 - 1)) * 6 + 1, 1]
-  print(headings)
+  #print(headings)
   res <- data.frame()
   for (h in headings) {
     r <- convColName(h)
@@ -85,4 +86,35 @@ convColObs <- function(df) {
 #今回の測色データからpcodeとlotを抽出する
 getPcodeLot <- function(df) {
   unique(convColObs(df)[, 1:2])
+}
+
+
+#測色データを読み込み、最新のデータだけ残して書き戻し、結果データを返す
+recent_data <- function(fn){
+  df <- read_tsv(fn, locale=locale(encoding = "MS932"))
+  day <- (df[nrow(df),2])
+  day <- str_sub(day, -20, -11)
+  r <- df %>% transmute(r = str_detect(データ名, day))
+  start_row <- min(which(unlist(r))) - 1
+  df <- df[start_row:nrow(df),]
+  write.table(df, fn, sep = "\t", quote=F, row.names=F, fileEncoding = "MS932")
+  df
+}
+
+#読み込んだdfから不正な色名の一覧を表示する。不正な色名が無ければTrueを返す
+check_names <- function(df) {
+  #updaterccode()
+  #df <- df[, -1]
+  names(df) <- c("X", "name", "l", "a", "b")
+  headings <- df[(0:(nrow(df) / 6 - 1)) * 6 + 1, 1:2]
+  print(headings)
+ 
+  success <- T
+  res <- data.frame()
+  r <- apply(headings, 1, FUN=function(h) convColName(h[2]))
+  invalids <- which(is.na(r))
+  if (length(invalids) > 0) {
+    print("以下の色名は不正または曖昧です")
+    print(headings[invalids,])
+  }
 }
