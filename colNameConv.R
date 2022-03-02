@@ -66,15 +66,14 @@ convColName <- function(s) {
 }
 
 convColObs <- function(df) {
-  updaterccode()
-  df <- df[, -1]
+  df <- df[, c(-1,-3)]
   names(df) <- c("name", "l", "a", "b")
-  headings <- df[(0:(nrow(df) / 6 - 1)) * 6 + 1, 1]
-  #print(headings)
+  headings <- unlist(df[(0:(nrow(df) / 6 - 1)) * 6 + 1, 1])
+
   res <- data.frame()
   for (h in headings) {
     r <- convColName(h)
-    if (is.na(r)) stop("Name ERROR!")
+    #if (is.na(r)) stop("Name ERROR!")
     for (i in 1:6) res <- rbind(res, r)
   }
   wb <- rep(rep(c("w", "b"), each = 3), length(headings))
@@ -103,18 +102,35 @@ recent_data <- function(fn){
 
 #読み込んだdfから不正な色名の一覧を表示する。不正な色名が無ければTrueを返す
 check_names <- function(df) {
-  #updaterccode()
   #df <- df[, -1]
   names(df) <- c("X", "name", "l", "a", "b")
   headings <- df[(0:(nrow(df) / 6 - 1)) * 6 + 1, 1:2]
-  print(headings)
- 
-  success <- T
-  res <- data.frame()
   r <- apply(headings, 1, FUN=function(h) convColName(h[2]))
   invalids <- which(is.na(r))
   if (length(invalids) > 0) {
     print("以下の色名は不正または曖昧です")
     print(headings[invalids,])
-  }
+    FALSE
+  } else TRUE
 }
+
+library(tidyverse)
+library(lubridate)
+#library(odbc)
+#library(DBI)
+#library(dbplyr)
+library(RODBC)
+#con <- dbConnect(odbc::odbc(), "qc")
+#rccode <- dbGetQuery(con, "select * from rccode;")
+con <- odbcConnect("qc")
+rccode <- sqlQuery(con, "select * from rccode;")
+
+df <- recent_data("col.txt")
+if (!check_names(df)) stop()
+dbdata <- convColObs(df)
+s <- sqlAppendTable(con, "colmeas", dbdata[1,], row.names = F)
+s[1] <- paste0(s[1], ";")
+dbExecute(con, s)
+
+con <- odbcConnect("qc")
+sqlSave(con, dbdata, tablename = "colmeas", rownames = F,  append = TRUE)
