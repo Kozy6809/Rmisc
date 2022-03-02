@@ -128,9 +128,28 @@ rccode <- sqlQuery(con, "select * from rccode;")
 df <- recent_data("col.txt")
 if (!check_names(df)) stop()
 dbdata <- convColObs(df)
-s <- sqlAppendTable(con, "colmeas", dbdata[1,], row.names = F)
-s[1] <- paste0(s[1], ";")
-dbExecute(con, s)
+#ロットがNAの場合、dayも文字のNAになるため、insertできなくなるが、他の行は記録され、エラーも発生しない
+for (i in 1:nrow(dbdata)) {
+  row <- dbdata[i,]
+  val <- paste0(row$pcode, ", '", row$lot, "', ", row$day, ", '", row$bg, "', ",
+                row$l, ", ", row$a, ", ", row$b)
+  q <- paste("insert into colmeas values (", val, ");")
+  sqlQuery(con, q)
+}
 
-con <- odbcConnect("qc")
-sqlSave(con, dbdata, tablename = "colmeas", rownames = F,  append = TRUE)
+#マクロ"colavg"相当のクエリを実行
+sqlQuery(con, "delete from colavg;")
+sqlQuery(con, "insert into colavg select * from colavgq;")
+sqlQuery(con, "delete from colavgavg;")
+sqlQuery(con, "insert into colavgavg select * from colavgavgq;")
+
+#getPcodeLot()を実行し、結果をテーブルtに入れる
+
+#addN2ColavgLot
+sqlQuery(con, "UPDATE colavg AS c INNER JOIN t AS t ON ([c].pcode=[t].[pcode]) AND ([c].lot=[t].[lot]) SET c.lot = [c].lot+'n';
+")
+#addN2ColmeasLot
+sqlQuery(con, "UPDATE colmeas AS c INNER JOIN t AS t ON ([c].lot=[t].[lot]) AND ([c].pcode=[t].[pcode]) SET c.lot = [c].lot+'n';")
+#ins2newcol2
+sqlQuery(con, "INSERT INTO newcol2 SELECT * FROM [select c.* from colavg c inner join t on c.pcode = t.pcode and c.lot = (t.lot + 'n')]. AS [%$##@_Alias];
+")
